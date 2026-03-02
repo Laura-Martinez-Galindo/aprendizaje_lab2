@@ -14965,6 +14965,358 @@ TEST  | RMSE: 10.201550748309883 | MAE: 2.6302053128868486 | R2: 0.0203586465819
 </div>
 </div>
 </div>
+</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell" id="cell-id=67524204">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [52]:</div>
+<div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="cm-editor cm-s-jupyter">
+<div class="highlight hl-ipython3"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">sklearn.pipeline</span><span class="w"> </span><span class="kn">import</span> <span class="n">Pipeline</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">sklearn.compose</span><span class="w"> </span><span class="kn">import</span> <span class="n">ColumnTransformer</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_safe_get_names_from_pipe</span><span class="p">(</span><span class="n">pipe</span><span class="p">,</span> <span class="n">input_features</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Devuelve nombres de salida de un Pipeline aunque el último paso</span>
+<span class="sd">    (ej: clipper) no soporte get_feature_names_out.</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">pipe</span><span class="p">,</span> <span class="s2">"get_feature_names_out"</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">pipe</span><span class="o">.</span><span class="n">get_feature_names_out</span><span class="p">(</span><span class="n">input_features</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+            <span class="k">pass</span>
+
+    <span class="c1"># Si es Pipeline y el último no soporta nombres, lo quitamos</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">pipe</span><span class="p">,</span> <span class="n">Pipeline</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">pipe</span><span class="o">.</span><span class="n">steps</span><span class="p">),</span> <span class="mi">0</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">):</span>
+            <span class="n">sub</span> <span class="o">=</span> <span class="n">pipe</span><span class="p">[:</span><span class="n">k</span><span class="p">]</span>
+            <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">sub</span><span class="p">,</span> <span class="s2">"get_feature_names_out"</span><span class="p">):</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="k">return</span> <span class="n">sub</span><span class="o">.</span><span class="n">get_feature_names_out</span><span class="p">(</span><span class="n">input_features</span><span class="p">)</span>
+                <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+                    <span class="k">continue</span>
+
+    <span class="c1"># Fallback: si de verdad no se puede, devolvemos los input_features</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">input_features</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">object</span><span class="p">)</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">get_feature_names_out_robusto</span><span class="p">(</span><span class="n">preprocessor</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Funciona con ColumnTransformer + Pipelines internos aunque haya pasos</span>
+<span class="sd">    sin get_feature_names_out (ej: clipper).</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">preprocessor</span><span class="p">,</span> <span class="n">ColumnTransformer</span><span class="p">):</span>
+        <span class="c1"># si fuera un Pipeline “normal”</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">preprocessor</span><span class="p">,</span> <span class="s2">"get_feature_names_out"</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">preprocessor</span><span class="o">.</span><span class="n">get_feature_names_out</span><span class="p">()</span>
+        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">"Se esperaba un ColumnTransformer o algo con get_feature_names_out."</span><span class="p">)</span>
+
+    <span class="c1"># Nombres de entrada (si X era DataFrame, esto suele existir)</span>
+    <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">preprocessor</span><span class="p">,</span> <span class="s2">"feature_names_in_"</span><span class="p">):</span>
+        <span class="n">input_all</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">preprocessor</span><span class="o">.</span><span class="n">feature_names_in_</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">object</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="c1"># si X fue numpy, no hay nombres reales</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"No hay feature_names_in_. Usa X como DataFrame para nombres reales."</span><span class="p">)</span>
+
+    <span class="n">out_names</span> <span class="o">=</span> <span class="p">[]</span>
+
+    <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">trans</span><span class="p">,</span> <span class="n">cols</span> <span class="ow">in</span> <span class="n">preprocessor</span><span class="o">.</span><span class="n">transformers_</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">trans</span> <span class="o">==</span> <span class="s2">"drop"</span><span class="p">:</span>
+            <span class="k">continue</span>
+
+        <span class="c1"># Resolver columnas a nombres</span>
+        <span class="k">if</span> <span class="n">cols</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">col_names</span> <span class="o">=</span> <span class="n">input_all</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># cols puede ser lista de strings, índices, slice, etc.</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">cols</span><span class="p">,</span> <span class="nb">slice</span><span class="p">):</span>
+                <span class="n">col_names</span> <span class="o">=</span> <span class="n">input_all</span><span class="p">[</span><span class="n">cols</span><span class="p">]</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">col_names</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">input_all</span><span class="p">[</span><span class="n">c</span><span class="p">]</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="p">(</span><span class="nb">int</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">integer</span><span class="p">))</span> <span class="k">else</span> <span class="n">c</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">cols</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">object</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">trans</span> <span class="o">==</span> <span class="s2">"passthrough"</span><span class="p">:</span>
+            <span class="n">out_names</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">col_names</span><span class="o">.</span><span class="n">tolist</span><span class="p">())</span>
+            <span class="k">continue</span>
+
+        <span class="c1"># Pipeline / transformer con nombres</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">trans</span><span class="p">,</span> <span class="n">Pipeline</span><span class="p">):</span>
+            <span class="n">names</span> <span class="o">=</span> <span class="n">_safe_get_names_from_pipe</span><span class="p">(</span><span class="n">trans</span><span class="p">,</span> <span class="n">col_names</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">trans</span><span class="p">,</span> <span class="s2">"get_feature_names_out"</span><span class="p">):</span>
+                <span class="n">names</span> <span class="o">=</span> <span class="n">trans</span><span class="o">.</span><span class="n">get_feature_names_out</span><span class="p">(</span><span class="n">col_names</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">names</span> <span class="o">=</span> <span class="n">col_names</span>  <span class="c1"># fallback</span>
+
+        <span class="n">out_names</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">names</span><span class="p">))</span>
+
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">out_names</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">object</span><span class="p">)</span>
+
+<span class="n">pre</span> <span class="o">=</span> <span class="n">mejor_lasso</span><span class="o">.</span><span class="n">named_steps</span><span class="p">[</span><span class="s2">"preprocesamiento"</span><span class="p">]</span>
+<span class="n">model</span> <span class="o">=</span> <span class="n">mejor_lasso</span><span class="o">.</span><span class="n">named_steps</span><span class="p">[</span><span class="s2">"modelo"</span><span class="p">]</span>
+
+<span class="n">feature_names</span> <span class="o">=</span> <span class="n">get_feature_names_out_robusto</span><span class="p">(</span><span class="n">pre</span><span class="p">)</span>
+<span class="n">coef</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ravel</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">coef_</span><span class="p">)</span>
+
+<span class="n">df_coef</span> <span class="o">=</span> <span class="p">(</span><span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span><span class="s2">"feature"</span><span class="p">:</span> <span class="n">feature_names</span><span class="p">,</span> <span class="s2">"coef"</span><span class="p">:</span> <span class="n">coef</span><span class="p">,</span> <span class="s2">"abs_coef"</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">coef</span><span class="p">)})</span><span class="o">.</span><span class="n">sort_values</span><span class="p">(</span><span class="s2">"abs_coef"</span><span class="p">,</span> <span class="n">ascending</span><span class="o">=</span><span class="kc">False</span><span class="p">))</span>
+
+<span class="n">display</span><span class="p">(</span><span class="n">df_coef</span><span class="o">.</span><span class="n">head</span><span class="p">(</span><span class="mi">30</span><span class="p">))</span>
+
+<span class="c1"># Variables “seleccionadas” por Lasso (coef != 0)</span>
+<span class="n">seleccion</span> <span class="o">=</span> <span class="n">df_coef</span><span class="p">[</span><span class="n">df_coef</span><span class="p">[</span><span class="s2">"coef"</span><span class="p">]</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+<span class="n">display</span><span class="p">(</span><span class="n">seleccion</span><span class="o">.</span><span class="n">head</span><span class="p">(</span><span class="mi">30</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Total features: </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">df_coef</span><span class="p">)</span><span class="si">}</span><span class="s2"> | No-cero (seleccionadas): </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">seleccion</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell-outputWrapper">
+<div class="jp-Collapser jp-OutputCollapser jp-Cell-outputCollapser">
+</div>
+<div class="jp-OutputArea jp-Cell-outputArea">
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedHTMLCommon jp-RenderedHTML jp-OutputArea-output" data-mime-type="text/html" tabindex="0">
+<div>
+<style scoped="">
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th></th>
+<th>feature</th>
+<th>coef</th>
+<th>abs_coef</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>15</th>
+<td>Diabetes Status_Y</td>
+<td>2.394977</td>
+<td>2.394977</td>
+</tr>
+<tr>
+<th>4</th>
+<td>BMI</td>
+<td>2.266799</td>
+<td>2.266799</td>
+</tr>
+<tr>
+<th>7</th>
+<td>Systolic BP</td>
+<td>1.453254</td>
+<td>1.453254</td>
+</tr>
+<tr>
+<th>11</th>
+<td>Estimated LDL (mg/dL)</td>
+<td>0.070604</td>
+<td>0.070604</td>
+</tr>
+<tr>
+<th>14</th>
+<td>Smoking Status_Y</td>
+<td>0.055015</td>
+<td>0.055015</td>
+</tr>
+<tr>
+<th>0</th>
+<td>Age</td>
+<td>-0.008655</td>
+<td>0.008655</td>
+</tr>
+<tr>
+<th>5</th>
+<td>Abdominal Circumference (cm)</td>
+<td>0.000000</td>
+<td>0.000000</td>
+</tr>
+<tr>
+<th>3</th>
+<td>Height (cm)</td>
+<td>-0.000000</td>
+<td>0.000000</td>
+</tr>
+<tr>
+<th>2</th>
+<td>Height (m)</td>
+<td>-0.000000</td>
+<td>0.000000</td>
+</tr>
+<tr>
+<th>1</th>
+<td>Weight (kg)</td>
+<td>-0.000000</td>
+<td>0.000000</td>
+</tr>
+<tr>
+<th>9</th>
+<td>Total Cholesterol (mg/dL)</td>
+<td>0.000000</td>
+<td>0.000000</td>
+</tr>
+<tr>
+<th>10</th>
+<td>HDL (mg/dL)</td>
+<td>-0.000000</td>
+<td>0.000000</td>
+</tr>
+<tr>
+<th>8</th>
+<td>Diastolic BP</td>
+<td>-0.000000</td>
+<td>0.000000</td>
+</tr>
+<tr>
+<th>6</th>
+<td>Waist-to-Height Ratio</td>
+<td>0.000000</td>
+<td>0.000000</td>
+</tr>
+<tr>
+<th>13</th>
+<td>Sex_M</td>
+<td>0.000000</td>
+<td>0.000000</td>
+</tr>
+<tr>
+<th>12</th>
+<td>Fasting Blood Sugar (mg/dL)</td>
+<td>0.000000</td>
+<td>0.000000</td>
+</tr>
+<tr>
+<th>16</th>
+<td>Family History of CVD_Y</td>
+<td>-0.000000</td>
+<td>0.000000</td>
+</tr>
+<tr>
+<th>17</th>
+<td>Physical Activity Level</td>
+<td>0.000000</td>
+<td>0.000000</td>
+</tr>
+<tr>
+<th>18</th>
+<td>Blood Pressure Category_Elevated</td>
+<td>0.000000</td>
+<td>0.000000</td>
+</tr>
+<tr>
+<th>19</th>
+<td>Blood Pressure Category_Hypertension Stage 1</td>
+<td>0.000000</td>
+<td>0.000000</td>
+</tr>
+<tr>
+<th>20</th>
+<td>Blood Pressure Category_Hypertension Stage 2</td>
+<td>-0.000000</td>
+<td>0.000000</td>
+</tr>
+<tr>
+<th>21</th>
+<td>Blood Pressure Category_Normal</td>
+<td>-0.000000</td>
+<td>0.000000</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedHTMLCommon jp-RenderedHTML jp-OutputArea-output" data-mime-type="text/html" tabindex="0">
+<div>
+<style scoped="">
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th></th>
+<th>feature</th>
+<th>coef</th>
+<th>abs_coef</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>15</th>
+<td>Diabetes Status_Y</td>
+<td>2.394977</td>
+<td>2.394977</td>
+</tr>
+<tr>
+<th>4</th>
+<td>BMI</td>
+<td>2.266799</td>
+<td>2.266799</td>
+</tr>
+<tr>
+<th>7</th>
+<td>Systolic BP</td>
+<td>1.453254</td>
+<td>1.453254</td>
+</tr>
+<tr>
+<th>11</th>
+<td>Estimated LDL (mg/dL)</td>
+<td>0.070604</td>
+<td>0.070604</td>
+</tr>
+<tr>
+<th>14</th>
+<td>Smoking Status_Y</td>
+<td>0.055015</td>
+<td>0.055015</td>
+</tr>
+<tr>
+<th>0</th>
+<td>Age</td>
+<td>-0.008655</td>
+<td>0.008655</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="text/plain" tabindex="0">
+<pre>Total features: 22 | No-cero (seleccionadas): 6
+</pre>
+</div>
+</div>
+</div>
+</div>
 </div>
 <div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=c0252b4a">
 <div class="jp-Cell-inputWrapper" tabindex="0">
@@ -15466,7 +15818,511 @@ R2: media=0.0363 | IC95%=[-0.0014, 0.1011] | std=0.0346 | test=0.0303
 <p>En el caso del RMSE, la media bootstrap fue aproximadamente 9.93 y el intervalo estimado fue [4.93, 14.41], mientras que el valor puntual observado en test fue 10.15. El hecho de que este valor se encuentre muy cercano a la media de la distribución y claramente dentro del intervalo sugiere que el error reportado es coherente con la variabilidad muestral esperada. Sin embargo, la amplitud del intervalo indica que el nivel de error puede variar de manera apreciable si cambia la composición de los datos evaluados, lo que evidencia una variabilidad moderada en el desempeño.</p>
 <p>Para el MAE, la media bootstrap fue cercana a 2.78, con un intervalo [1.81, 3.98], y el valor puntual en test fue 2.76. La distribución observada es relativamente concentrada y el valor puntual coincide estrechamente con la media, lo que indica consistencia en el error absoluto promedio. Esto sugiere que, aunque el modelo no alcanza un nivel alto de precisión, su comportamiento es relativamente estable frente a pequeñas variaciones en los datos de evaluación.</p>
 <p>En cuanto al R², la media bootstrap fue aproximadamente 0.036 y el intervalo estimado fue [-0.001, 0.101], con un valor puntual en test de 0.030. La cercanía del límite inferior a cero refleja que la capacidad explicativa del modelo es limitada y sensible a la muestra considerada. En otras palabras, el bajo R² no parece ser producto de una partición particular del test, sino una característica consistente del modelo y del conjunto de variables disponibles.</p>
-<p>En conjunto, el análisis bootstrap permite concluir que el modelo presenta estabilidad razonable en términos de error (RMSE y MAE), ya que los valores puntuales se alinean con la distribución empírica obtenida. No obstante, la amplitud de los intervalos, especialmente en RMSE y R², muestra que existe una variabilidad no despreciable en el desempeño, lo que implica que las predicciones deben interpretarse considerando esta incertidumbre.</p>
+<p>En conjunto, el análisis bootstrap permite concluir que el modelo presenta estabilidad razonable en términos de error (RMSE y MAE), ya que los valores puntuales se alinean con la distribución empírica obtenida. No obstante, la amplitud de los intervalos, especialmente en RMSE, muestra que existe una variabilidad no despreciable en el desempeño, lo que implica que las predicciones deben interpretarse considerando esta incertidumbre.</p>
+</div>
+</div>
+</div>
+</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell" id="cell-id=8a49df64">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [57]:</div>
+<div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="cm-editor cm-s-jupyter">
+<div class="highlight hl-ipython3"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">re</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">sklearn.compose</span><span class="w"> </span><span class="kn">import</span> <span class="n">ColumnTransformer</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">sklearn.pipeline</span><span class="w"> </span><span class="kn">import</span> <span class="n">Pipeline</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">sklearn.preprocessing</span><span class="w"> </span><span class="kn">import</span> <span class="n">PolynomialFeatures</span><span class="p">,</span> <span class="n">OneHotEncoder</span>
+
+<span class="n">_PLACEHOLDER</span> <span class="o">=</span> <span class="s2">"§§"</span>  <span class="c1"># para proteger espacios dentro de nombres originales</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_protect_spaces</span><span class="p">(</span><span class="n">cols</span><span class="p">):</span>
+    <span class="k">return</span> <span class="p">[</span><span class="nb">str</span><span class="p">(</span><span class="n">c</span><span class="p">)</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">" "</span><span class="p">,</span> <span class="n">_PLACEHOLDER</span><span class="p">)</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">cols</span><span class="p">]</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_restore_spaces</span><span class="p">(</span><span class="n">s</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+    <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">s</span><span class="p">)</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="n">_PLACEHOLDER</span><span class="p">,</span> <span class="s2">" "</span><span class="p">)</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_strip_prefix</span><span class="p">(</span><span class="n">s</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+    <span class="c1"># quita num__/bin__/cat__/...</span>
+    <span class="k">return</span> <span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="sa">r</span><span class="s2">"^[A-Za-z0-9_]+__"</span><span class="p">,</span> <span class="s2">""</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">s</span><span class="p">))</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">nombres_polinomiales_grado2</span><span class="p">(</span><span class="n">preprocessor</span><span class="p">:</span> <span class="n">ColumnTransformer</span><span class="p">,</span> <span class="n">X_df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">limpiar</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Extrae nombres completos del ColumnTransformer cuando hay PolynomialFeatures (grado&gt;=2),</span>
+<span class="sd">    incluyendo términos lineales, cuadrados e interacciones, SIN romper nombres con espacios.</span>
+<span class="sd">    NO reentrena. Requiere X_df DataFrame.</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">X_df</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"X_test/X_train debe ser un DataFrame para obtener nombres reales."</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">preprocessor</span><span class="p">,</span> <span class="s2">"feature_names_in_"</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"El preprocesador no tiene feature_names_in_. Asegúrate de haber fiteado con DataFrame."</span><span class="p">)</span>
+
+    <span class="n">input_cols</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">preprocessor</span><span class="o">.</span><span class="n">feature_names_in_</span><span class="p">)</span>
+    <span class="n">X_df</span> <span class="o">=</span> <span class="n">X_df</span><span class="p">[</span><span class="n">input_cols</span><span class="p">]</span>  <span class="c1"># mismo orden que en el fit</span>
+
+    <span class="n">out_names</span> <span class="o">=</span> <span class="p">[]</span>
+
+    <span class="k">for</span> <span class="n">block_name</span><span class="p">,</span> <span class="n">trans</span><span class="p">,</span> <span class="n">cols</span> <span class="ow">in</span> <span class="n">preprocessor</span><span class="o">.</span><span class="n">transformers_</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">trans</span> <span class="o">==</span> <span class="s2">"drop"</span><span class="p">:</span>
+            <span class="k">continue</span>
+
+        <span class="c1"># Resolver cols a nombres reales</span>
+        <span class="k">if</span> <span class="n">cols</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">cols_names</span> <span class="o">=</span> <span class="n">input_cols</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">cols</span><span class="p">,</span> <span class="nb">slice</span><span class="p">):</span>
+                <span class="n">cols_names</span> <span class="o">=</span> <span class="n">input_cols</span><span class="p">[</span><span class="n">cols</span><span class="p">]</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">cols_names</span> <span class="o">=</span> <span class="p">[</span><span class="n">input_cols</span><span class="p">[</span><span class="n">c</span><span class="p">]</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="p">(</span><span class="nb">int</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">integer</span><span class="p">))</span> <span class="k">else</span> <span class="n">c</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">cols</span><span class="p">]</span>
+
+        <span class="k">if</span> <span class="n">trans</span> <span class="o">==</span> <span class="s2">"passthrough"</span><span class="p">:</span>
+            <span class="n">out_names</span><span class="o">.</span><span class="n">extend</span><span class="p">([</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">block_name</span><span class="si">}</span><span class="s2">__</span><span class="si">{</span><span class="n">c</span><span class="si">}</span><span class="s2">"</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">cols_names</span><span class="p">])</span>
+            <span class="k">continue</span>
+
+        <span class="c1"># Pipeline: buscar PolynomialFeatures u OneHotEncoder</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">trans</span><span class="p">,</span> <span class="n">Pipeline</span><span class="p">):</span>
+            <span class="n">poly</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="n">ohe</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">step_obj</span> <span class="ow">in</span> <span class="n">trans</span><span class="o">.</span><span class="n">steps</span><span class="p">:</span>
+                <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">step_obj</span><span class="p">,</span> <span class="n">PolynomialFeatures</span><span class="p">):</span>
+                    <span class="n">poly</span> <span class="o">=</span> <span class="n">step_obj</span>
+                <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">step_obj</span><span class="p">,</span> <span class="n">OneHotEncoder</span><span class="p">):</span>
+                    <span class="n">ohe</span> <span class="o">=</span> <span class="n">step_obj</span>
+
+            <span class="c1"># --- PolynomialFeatures (aquí está el fix) ---</span>
+            <span class="k">if</span> <span class="n">poly</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">cols_safe</span> <span class="o">=</span> <span class="n">_protect_spaces</span><span class="p">(</span><span class="n">cols_names</span><span class="p">)</span>  <span class="c1"># "Systolic BP" -&gt; "Systolic§§BP"</span>
+                <span class="n">poly_safe</span> <span class="o">=</span> <span class="n">poly</span><span class="o">.</span><span class="n">get_feature_names_out</span><span class="p">(</span><span class="n">cols_safe</span><span class="p">)</span>
+
+                <span class="c1"># 1) convertir separadores ENTRE términos (espacios de PolynomialFeatures) a " * "</span>
+                <span class="c1">#    (aquí los espacios SOLO separan términos porque los nombres reales están protegidos)</span>
+                <span class="n">poly_fmt</span> <span class="o">=</span> <span class="p">[</span><span class="n">s</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">" "</span><span class="p">,</span> <span class="s2">" * "</span><span class="p">)</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">poly_safe</span><span class="p">]</span>
+
+                <span class="c1"># 2) restaurar espacios reales dentro de cada nombre</span>
+                <span class="n">poly_fmt</span> <span class="o">=</span> <span class="p">[</span><span class="n">_restore_spaces</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">poly_fmt</span><span class="p">]</span>
+
+                <span class="n">out_names</span><span class="o">.</span><span class="n">extend</span><span class="p">([</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">block_name</span><span class="si">}</span><span class="s2">__</span><span class="si">{</span><span class="n">n</span><span class="si">}</span><span class="s2">"</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">poly_fmt</span><span class="p">])</span>
+                <span class="k">continue</span>
+
+            <span class="c1"># --- OneHotEncoder ---</span>
+            <span class="k">if</span> <span class="n">ohe</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">ohe_names</span> <span class="o">=</span> <span class="n">ohe</span><span class="o">.</span><span class="n">get_feature_names_out</span><span class="p">(</span><span class="n">cols_names</span><span class="p">)</span>
+                <span class="n">out_names</span><span class="o">.</span><span class="n">extend</span><span class="p">([</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">block_name</span><span class="si">}</span><span class="s2">__</span><span class="si">{</span><span class="n">n</span><span class="si">}</span><span class="s2">"</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">ohe_names</span><span class="p">])</span>
+                <span class="k">continue</span>
+
+            <span class="c1"># fallback (si el pipeline completo soporta nombres)</span>
+            <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">trans</span><span class="p">,</span> <span class="s2">"get_feature_names_out"</span><span class="p">):</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">names</span> <span class="o">=</span> <span class="n">trans</span><span class="o">.</span><span class="n">get_feature_names_out</span><span class="p">(</span><span class="n">cols_names</span><span class="p">)</span>
+                    <span class="n">out_names</span><span class="o">.</span><span class="n">extend</span><span class="p">([</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">block_name</span><span class="si">}</span><span class="s2">__</span><span class="si">{</span><span class="n">n</span><span class="si">}</span><span class="s2">"</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">names</span><span class="p">])</span>
+                    <span class="k">continue</span>
+                <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+                    <span class="k">pass</span>
+
+        <span class="c1"># Transformer directo</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">trans</span><span class="p">,</span> <span class="n">OneHotEncoder</span><span class="p">):</span>
+            <span class="n">names</span> <span class="o">=</span> <span class="n">trans</span><span class="o">.</span><span class="n">get_feature_names_out</span><span class="p">(</span><span class="n">cols_names</span><span class="p">)</span>
+            <span class="n">out_names</span><span class="o">.</span><span class="n">extend</span><span class="p">([</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">block_name</span><span class="si">}</span><span class="s2">__</span><span class="si">{</span><span class="n">n</span><span class="si">}</span><span class="s2">"</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">names</span><span class="p">])</span>
+            <span class="k">continue</span>
+
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">trans</span><span class="p">,</span> <span class="s2">"get_feature_names_out"</span><span class="p">):</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">names</span> <span class="o">=</span> <span class="n">trans</span><span class="o">.</span><span class="n">get_feature_names_out</span><span class="p">(</span><span class="n">cols_names</span><span class="p">)</span>
+                <span class="n">out_names</span><span class="o">.</span><span class="n">extend</span><span class="p">([</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">block_name</span><span class="si">}</span><span class="s2">__</span><span class="si">{</span><span class="n">n</span><span class="si">}</span><span class="s2">"</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">names</span><span class="p">])</span>
+                <span class="k">continue</span>
+            <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+                <span class="k">pass</span>
+
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">"No pude obtener nombres del bloque '</span><span class="si">{</span><span class="n">block_name</span><span class="si">}</span><span class="s2">' (</span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">trans</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">). "</span>
+            <span class="s2">"Revisa si ese transformer cambia el número de columnas o si falta manejarlo."</span>
+        <span class="p">)</span>
+
+    <span class="n">out_names</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">out_names</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">object</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">limpiar</span><span class="p">:</span>
+        <span class="n">out_names</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">_strip_prefix</span><span class="p">(</span><span class="n">n</span><span class="p">)</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">out_names</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">object</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">out_names</span>
+
+
+<span class="c1"># ====== USO: COEFICIENTES CON NOMBRES CORRECTOS ======</span>
+<span class="n">best_model</span> <span class="o">=</span> <span class="n">mejor_ridge</span>  <span class="c1"># o best_model</span>
+<span class="n">pre</span> <span class="o">=</span> <span class="n">best_model</span><span class="o">.</span><span class="n">named_steps</span><span class="p">[</span><span class="s2">"preprocesamiento"</span><span class="p">]</span>
+<span class="n">model</span> <span class="o">=</span> <span class="n">best_model</span><span class="o">.</span><span class="n">named_steps</span><span class="p">[</span><span class="s2">"modelo"</span><span class="p">]</span>
+
+<span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">X_test</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">):</span>
+    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"Para obtener nombres reales, X_test debe ser DataFrame con columnas."</span><span class="p">)</span>
+
+<span class="n">X_sample</span> <span class="o">=</span> <span class="n">X_test</span><span class="o">.</span><span class="n">iloc</span><span class="p">[:</span><span class="mi">10</span><span class="p">]</span>
+<span class="n">feature_names</span> <span class="o">=</span> <span class="n">nombres_polinomiales_grado2</span><span class="p">(</span><span class="n">pre</span><span class="p">,</span> <span class="n">X_sample</span><span class="p">,</span> <span class="n">limpiar</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+<span class="n">coef</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ravel</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">coef_</span><span class="p">)</span>
+
+<span class="c1"># Validación: #nombres == #columnas transformadas == #coeficientes</span>
+<span class="n">Z</span> <span class="o">=</span> <span class="n">pre</span><span class="o">.</span><span class="n">transform</span><span class="p">(</span><span class="n">X_sample</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"Cols transformadas:"</span><span class="p">,</span> <span class="n">Z</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="s2">"| Nombres:"</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">feature_names</span><span class="p">),</span> <span class="s2">"| Coefs:"</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">coef</span><span class="p">))</span>
+
+<span class="k">if</span> <span class="n">Z</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="n">feature_names</span><span class="p">)</span> <span class="ow">or</span> <span class="nb">len</span><span class="p">(</span><span class="n">coef</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="n">feature_names</span><span class="p">):</span>
+    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"Mismatch: nombres/columnas/coeficientes no coinciden."</span><span class="p">)</span>
+
+<span class="n">df_final</span> <span class="o">=</span> <span class="p">(</span>
+    <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span><span class="s2">"feature"</span><span class="p">:</span> <span class="n">feature_names</span><span class="p">,</span> <span class="s2">"coef"</span><span class="p">:</span> <span class="n">coef</span><span class="p">,</span> <span class="s2">"abs_coef"</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">coef</span><span class="p">)})</span>
+      <span class="o">.</span><span class="n">sort_values</span><span class="p">(</span><span class="s2">"abs_coef"</span><span class="p">,</span> <span class="n">ascending</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+      <span class="o">.</span><span class="n">reset_index</span><span class="p">(</span><span class="n">drop</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="p">)</span>
+
+<span class="n">display</span><span class="p">(</span><span class="n">df_final</span><span class="o">.</span><span class="n">head</span><span class="p">(</span><span class="mi">50</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell-outputWrapper">
+<div class="jp-Collapser jp-OutputCollapser jp-Cell-outputCollapser">
+</div>
+<div class="jp-OutputArea jp-Cell-outputArea">
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="text/plain" tabindex="0">
+<pre>Cols transformadas: 113 | Nombres: 113 | Coefs: 113
+</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedHTMLCommon jp-RenderedHTML jp-OutputArea-output" data-mime-type="text/html" tabindex="0">
+<div>
+<style scoped="">
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th></th>
+<th>feature</th>
+<th>coef</th>
+<th>abs_coef</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>0</th>
+<td>Diabetes Status_Y</td>
+<td>2.578232</td>
+<td>2.578232</td>
+</tr>
+<tr>
+<th>1</th>
+<td>BMI^2</td>
+<td>1.263908</td>
+<td>1.263908</td>
+</tr>
+<tr>
+<th>2</th>
+<td>BMI * Systolic BP</td>
+<td>1.156562</td>
+<td>1.156562</td>
+</tr>
+<tr>
+<th>3</th>
+<td>Blood Pressure Category_Normal</td>
+<td>-1.132540</td>
+<td>1.132540</td>
+</tr>
+<tr>
+<th>4</th>
+<td>BMI * Waist-to-Height Ratio</td>
+<td>1.022931</td>
+<td>1.022931</td>
+</tr>
+<tr>
+<th>5</th>
+<td>Systolic BP^2</td>
+<td>0.993514</td>
+<td>0.993514</td>
+</tr>
+<tr>
+<th>6</th>
+<td>BMI</td>
+<td>0.983050</td>
+<td>0.983050</td>
+</tr>
+<tr>
+<th>7</th>
+<td>BMI * Fasting Blood Sugar (mg/dL)</td>
+<td>0.953965</td>
+<td>0.953965</td>
+</tr>
+<tr>
+<th>8</th>
+<td>BMI * Abdominal Circumference (cm)</td>
+<td>0.934830</td>
+<td>0.934830</td>
+</tr>
+<tr>
+<th>9</th>
+<td>Blood Pressure Category_Elevated</td>
+<td>0.783787</td>
+<td>0.783787</td>
+</tr>
+<tr>
+<th>10</th>
+<td>Height (cm) * BMI</td>
+<td>0.781111</td>
+<td>0.781111</td>
+</tr>
+<tr>
+<th>11</th>
+<td>Height (m) * BMI</td>
+<td>0.780881</td>
+<td>0.780881</td>
+</tr>
+<tr>
+<th>12</th>
+<td>Systolic BP</td>
+<td>0.745228</td>
+<td>0.745228</td>
+</tr>
+<tr>
+<th>13</th>
+<td>BMI * Total Cholesterol (mg/dL)</td>
+<td>0.735658</td>
+<td>0.735658</td>
+</tr>
+<tr>
+<th>14</th>
+<td>Smoking Status_Y</td>
+<td>0.730240</td>
+<td>0.730240</td>
+</tr>
+<tr>
+<th>15</th>
+<td>BMI * Diastolic BP</td>
+<td>0.668987</td>
+<td>0.668987</td>
+</tr>
+<tr>
+<th>16</th>
+<td>Age * BMI</td>
+<td>0.651550</td>
+<td>0.651550</td>
+</tr>
+<tr>
+<th>17</th>
+<td>BMI * HDL (mg/dL)</td>
+<td>0.622108</td>
+<td>0.622108</td>
+</tr>
+<tr>
+<th>18</th>
+<td>Systolic BP * HDL (mg/dL)</td>
+<td>0.582036</td>
+<td>0.582036</td>
+</tr>
+<tr>
+<th>19</th>
+<td>Height (cm) * Systolic BP</td>
+<td>0.580071</td>
+<td>0.580071</td>
+</tr>
+<tr>
+<th>20</th>
+<td>Height (m) * Systolic BP</td>
+<td>0.579794</td>
+<td>0.579794</td>
+</tr>
+<tr>
+<th>21</th>
+<td>Waist-to-Height Ratio * Systolic BP</td>
+<td>0.568176</td>
+<td>0.568176</td>
+</tr>
+<tr>
+<th>22</th>
+<td>Systolic BP * Total Cholesterol (mg/dL)</td>
+<td>0.533760</td>
+<td>0.533760</td>
+</tr>
+<tr>
+<th>23</th>
+<td>BMI * Estimated LDL (mg/dL)</td>
+<td>0.530297</td>
+<td>0.530297</td>
+</tr>
+<tr>
+<th>24</th>
+<td>Abdominal Circumference (cm) * Systolic BP</td>
+<td>0.522370</td>
+<td>0.522370</td>
+</tr>
+<tr>
+<th>25</th>
+<td>Age * HDL (mg/dL)</td>
+<td>-0.511959</td>
+<td>0.511959</td>
+</tr>
+<tr>
+<th>26</th>
+<td>Weight (kg) * BMI</td>
+<td>0.442056</td>
+<td>0.442056</td>
+</tr>
+<tr>
+<th>27</th>
+<td>Blood Pressure Category_Hypertension Stage 1</td>
+<td>0.424474</td>
+<td>0.424474</td>
+</tr>
+<tr>
+<th>28</th>
+<td>Systolic BP * Diastolic BP</td>
+<td>0.400200</td>
+<td>0.400200</td>
+</tr>
+<tr>
+<th>29</th>
+<td>Family History of CVD_Y</td>
+<td>-0.369662</td>
+<td>0.369662</td>
+</tr>
+<tr>
+<th>30</th>
+<td>Systolic BP * Fasting Blood Sugar (mg/dL)</td>
+<td>0.364409</td>
+<td>0.364409</td>
+</tr>
+<tr>
+<th>31</th>
+<td>Age * Diastolic BP</td>
+<td>-0.361210</td>
+<td>0.361210</td>
+</tr>
+<tr>
+<th>32</th>
+<td>Diastolic BP^2</td>
+<td>-0.359042</td>
+<td>0.359042</td>
+</tr>
+<tr>
+<th>33</th>
+<td>Weight (kg) * Diastolic BP</td>
+<td>-0.333413</td>
+<td>0.333413</td>
+</tr>
+<tr>
+<th>34</th>
+<td>Sex_M</td>
+<td>0.304683</td>
+<td>0.304683</td>
+</tr>
+<tr>
+<th>35</th>
+<td>Age * Height (m)</td>
+<td>-0.300780</td>
+<td>0.300780</td>
+</tr>
+<tr>
+<th>36</th>
+<td>Age * Height (cm)</td>
+<td>-0.300459</td>
+<td>0.300459</td>
+</tr>
+<tr>
+<th>37</th>
+<td>Systolic BP * Estimated LDL (mg/dL)</td>
+<td>0.291336</td>
+<td>0.291336</td>
+</tr>
+<tr>
+<th>38</th>
+<td>Weight (kg) * Estimated LDL (mg/dL)</td>
+<td>-0.289069</td>
+<td>0.289069</td>
+</tr>
+<tr>
+<th>39</th>
+<td>Age</td>
+<td>-0.277944</td>
+<td>0.277944</td>
+</tr>
+<tr>
+<th>40</th>
+<td>Height (m) * Diastolic BP</td>
+<td>-0.276512</td>
+<td>0.276512</td>
+</tr>
+<tr>
+<th>41</th>
+<td>Height (cm) * Diastolic BP</td>
+<td>-0.276221</td>
+<td>0.276221</td>
+</tr>
+<tr>
+<th>42</th>
+<td>Height (m)^2</td>
+<td>-0.268965</td>
+<td>0.268965</td>
+</tr>
+<tr>
+<th>43</th>
+<td>Height (m) * Height (cm)</td>
+<td>-0.268558</td>
+<td>0.268558</td>
+</tr>
+<tr>
+<th>44</th>
+<td>Height (cm)^2</td>
+<td>-0.268150</td>
+<td>0.268150</td>
+</tr>
+<tr>
+<th>45</th>
+<td>Weight (kg) * Height (m)</td>
+<td>-0.254564</td>
+<td>0.254564</td>
+</tr>
+<tr>
+<th>46</th>
+<td>Weight (kg) * Height (cm)</td>
+<td>-0.254345</td>
+<td>0.254345</td>
+</tr>
+<tr>
+<th>47</th>
+<td>Height (m) * HDL (mg/dL)</td>
+<td>-0.248168</td>
+<td>0.248168</td>
+</tr>
+<tr>
+<th>48</th>
+<td>Height (cm) * HDL (mg/dL)</td>
+<td>-0.247954</td>
+<td>0.247954</td>
+</tr>
+<tr>
+<th>49</th>
+<td>Weight (kg) * Systolic BP</td>
+<td>0.247878</td>
+<td>0.247878</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
 </div>
 </div>
 </div>
@@ -15477,7 +16333,103 @@ R2: media=0.0363 | IC95%=[-0.0014, 0.1011] | std=0.0346 | test=0.0303
 </div>
 <div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
 </div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
-<h2 id="An%C3%A1lisis-de-Resultados">Análisis de Resultados<a class="anchor-link" href="#An%C3%A1lisis-de-Resultados">¶</a></h2>
+<h2 id="An%C3%A1lisis-de-Resultados">Análisis de Resultados<a class="anchor-link" href="#An%C3%A1lisis-de-Resultados">¶</a></h2><h3 id="An%C3%A1lisis-cuantitativo">Análisis cuantitativo<a class="anchor-link" href="#An%C3%A1lisis-cuantitativo">¶</a></h3><ul>
+<li><p>¿Cuál modelo obtuvo el mejor desempeño en el conjunto de test?
+El modelo que obtuvo el mejor desempeño en el conjunto de test fue la regresión polinomial regularizada con Ridge (grado 2, α ≈ 53). Este modelo alcanzó un RMSE en test de 10.1495, superando ligeramente al modelo Lasso (RMSE = 10.2016) y al modelo polinomial sin regularización (RMSE = 10.2385). Aunque las diferencias no son grandes, Ridge presentó el menor error en datos no vistos, junto con un R² en test de 0.0303, también superior al de Lasso (0.0204) y al modelo sin regularización (0.0132).</p>
+</li>
+<li><p>¿Coincide el mejor desempeño en test con el mejor promedio en validación cruzada? Si no coincide, ¿cuál puede ser la explicación?
+No coincide. El mejor promedio en validación cruzada lo obtuvo Lasso (RMSE_CV_mean = 10.7373), mientras que el menor RMSE en test lo obtuvo Ridge (RMSE_test = 10.1495). La diferencia entre ambos modelos es pequeña en magnitud, por lo que este cambio de orden es esperable. La validación cruzada calcula un promedio del error usando distintas particiones del entrenamiento, mientras que el test evalúa el modelo en una sola muestra fija. Cuando los desempeños son muy similares, pequeñas variaciones en los datos pueden hacer que el modelo que fue ligeramente mejor en promedio no sea exactamente el mejor en el conjunto de prueba. En este caso, las diferencias son marginales y no indican una contradicción, sino variabilidad natural del muestreo.</p>
+</li>
+<li><p>¿El modelo con mejor métrica promedio es necesariamente el más adecuado? Justifica considerando también la desviación estándar del desempeño.
+No necesariamente. Además del promedio, es fundamental considerar la estabilidad, medida aquí por la desviación estándar en validación cruzada. Aunque Lasso tuvo el menor RMSE promedio en CV, su desviación estándar (1.7730) fue ligeramente mayor que la de Ridge (1.7316). Esto indica que Ridge presentó un desempeño un poco más estable entre folds. Cuando las diferencias en promedio son pequeñas, un modelo con menor variabilidad puede ser preferible, ya que ofrece mayor consistencia. En este caso, Ridge combina buen desempeño promedio, menor desviación estándar y mejor resultado en test, lo que lo hace más sólido en conjunto.</p>
+</li>
+<li><p>Con base en las curvas de validación, ¿cómo cambia el error a medida que aumenta la complejidad? ¿En qué punto se evidencia sobreajuste?
+Las curvas de validación mostraron que, a medida que aumenta el grado del polinomio, el error de entrenamiento disminuye progresivamente, lo cual es esperable dado que el modelo se vuelve más flexible. Sin embargo, el error de validación comienza a aumentar a partir de grados mayores, evidenciando el incremento de la varianza. El sobreajuste se hizo evidente cuando el error de entrenamiento continuaba bajando mientras el error de validación aumentaba de forma marcada, especialmente en grados superiores a 2 en el modelo sin regularización. Esto confirma el comportamiento clásico del trade-off sesgo–varianza: mayor complejidad reduce sesgo, pero incrementa varianza y deteriora la generalización.</p>
+</li>
+<li><p>¿Cómo afecta la regularización la magnitud y estabilidad de los coeficientes?
+La regularización reduce la magnitud de los coeficientes y estabiliza el modelo. En Ridge, la penalización L2 contrae los coeficientes, evitando valores extremos asociados a términos polinomiales y reduciendo la sensibilidad a pequeñas variaciones en los datos. Esto permite incorporar mayor complejidad (grado 2) sin deteriorar el desempeño. En Lasso, la penalización L1 no solo reduce magnitudes sino que lleva algunos coeficientes exactamente a cero, realizando selección automática de variables. En ambos casos, la regularización mejora la estabilidad del modelo y controla el sobreajuste observado en la versión sin penalización.</p>
+</li>
+<li><p>¿Los intervalos de confianza obtenidos mediante bootstrapping sugieren estabilidad o alta variabilidad en el desempeño? ¿Qué implicaciones tiene esto?
+Los intervalos de confianza muestran que el modelo es relativamente estable en términos de error promedio (RMSE y MAE), pero presentan una variabilidad moderada. El valor puntual en test se ubica muy cerca de la media bootstrap en todas las métricas, lo que indica que el desempeño observado no es un resultado atípico. Sin embargo, la amplitud del intervalo del RMSE muestra que el error puede fluctuar de manera apreciable si cambia la composición de los datos evaluados. Esto implica que el modelo generaliza de forma consistente, pero con incertidumbre no despreciable. En términos prácticos, significa que el nivel de error esperado es relativamente estable, pero no debe interpretarse como una estimación exacta; existe un rango plausible dentro del cual puede variar el desempeño en nuevos datos.</p>
+</li>
+</ul>
+<h3 id="An%C3%A1lisis-cualitativo">Análisis cualitativo<a class="anchor-link" href="#An%C3%A1lisis-cualitativo">¶</a></h3><ul>
+<li>¿Qué variables fueron seleccionadas como más relevantes por el modelo Lasso?
+El modelo Lasso seleccionó un conjunto muy reducido de variables, lo que evidencia su capacidad de realizar selección automática. Las variables con coeficientes distintos de cero fueron:</li>
+</ul>
+<p>Diabetes Status_Y (≈ 2.39)
+BMI (≈ 2.27)
+Systolic BP (≈ 1.45)
+Estimated LDL (mg/dL) (≈ 0.07)
+Smoking Status_Y (≈ 0.06)
+Age (≈ -0.01)</p>
+<p>El resto de variables. incluyendo colesterol total, HDL, presión diastólica, circunferencia abdominal, categorías de presión arterial, actividad física y antecedentes familiares, fueron llevadas exactamente a cero. Esto implica que, bajo penalización L1, el modelo identifica como señal más consistente la presencia de diabetes, el índice de masa corporal, la presión sistólica y, en menor medida, LDL y tabaquismo. En términos prácticos, Lasso está señalando que el riesgo estimado se concentra principalmente en factores metabólicos y hemodinámicos clásicos.</p>
+<ul>
+<li>¿Qué interpretación práctica tienen los coeficientes del modelo final en el contexto del riesgo cardiovascular?
+El modelo final seleccionado (Ridge grado 2) incorpora términos lineales, cuadráticos e interacciones. Entre los coeficientes de mayor magnitud se encuentran:</li>
+</ul>
+<p>Diabetes Status_Y
+BMI²
+BMI * Systolic BP
+Systolic BP²
+BMI * Waist-to-Height Ratio
+BMI * Fasting Blood Sugar (mg/dL)
+BMI * Total Cholesterol (mg/dL)
+Smoking Status_Y</p>
+<p>La presencia de BMI² y Systolic BP² indica que el efecto de estas variables no es lineal: el riesgo aumenta de forma más acelerada en niveles altos. Las múltiples interacciones de BMI con presión arterial, glucosa, colesterol y circunferencia abdominal sugieren que el riesgo cardiovascular no depende de un solo factor aislado, sino de la combinación simultánea de adiposidad y marcadores metabólicos.</p>
+<p>Además, la variable Diabetes Status_Y mantiene el coeficiente más alto, lo que refuerza su papel estructural en la estimación del riesgo. En conjunto, el modelo final refleja un patrón clínicamente coherente: obesidad, hipertensión y alteraciones metabólicas interactúan y potencian el riesgo.</p>
+<ul>
+<li>¿Existen diferencias relevantes entre el modelo más preciso y el más interpretable?
+Sí. El modelo más preciso fue Ridge grado 2, mientras que el más interpretable fue Lasso grado 1.</li>
+</ul>
+<p>Lasso es claramente más simple: solo mantiene seis variables activas y elimina el resto. Esto facilita explicar el modelo y comunicar qué factores inciden en el riesgo. En contraste, Ridge introduce numerosas interacciones y términos cuadráticos, lo que incrementa la complejidad estructural del modelo. Aunque Ridge logra un RMSE ligeramente menor en test, la mejora es marginal respecto a Lasso.</p>
+<p>Por tanto, la diferencia no es solo numérica sino conceptual: Ridge captura relaciones más complejas; Lasso prioriza simplicidad y claridad en los determinantes del riesgo.</p>
+<ul>
+<li>¿Qué decisiones estratégicas podría tomar AlpesHearth a partir de los resultados obtenidos?</li>
+</ul>
+<p>A partir de estos resultados, AlpesHearth podría:</p>
+<ol>
+<li><p>Utilizar el modelo como herramienta de priorización para identificar perfiles con mayor probabilidad de riesgo elevado.</p>
+</li>
+<li><p>Focalizar intervenciones preventivas en control de peso, manejo de diabetes y control de presión arterial, dado que estos factores aparecen sistemáticamente como los más influyentes.</p>
+</li>
+<li><p>Revisar la calidad y diversidad de variables disponibles, ya que el bajo R² sugiere que el modelo no captura toda la variabilidad del riesgo.</p>
+</li>
+</ol>
+<p>El modelo no debe reemplazar evaluación clínica, pero sí puede apoyar decisiones preventivas y asignación eficiente de recursos.</p>
+<ul>
+<li><p>¿Mayor precisión implica necesariamente mayor valor para la organización?
+No necesariamente. En este caso, la mejora en RMSE entre Ridge y Lasso es pequeña. Si la ganancia en precisión es marginal pero la complejidad aumenta considerablemente, el valor adicional puede ser limitado. En contextos organizacionales, la interpretabilidad, la facilidad de implementación y la confianza de los usuarios pueden ser más determinantes que una reducción leve del error estadístico.</p>
+</li>
+<li><p>¿Un modelo más complejo necesariamente genera mayor valor empresarial?
+Tampoco. El modelo Ridge grado 2 es estructuralmente más complejo y captura interacciones relevantes, pero esto implica mayor dificultad de interpretación, validación y mantenimiento. Un modelo más complejo puede aumentar el riesgo de mala interpretación y requerir mayor esfuerzo técnico para su implementación y monitoreo.</p>
+</li>
+</ul>
+<p>En este caso, el valor empresarial depende del equilibrio entre precisión y claridad. Si el objetivo es explicar y comunicar factores de riesgo, Lasso puede ser más adecuado. Si el objetivo es minimizar ligeramente el error predictivo, Ridge es preferible. Sin embargo, la evidencia del laboratorio muestra que aumentar complejidad no genera una mejora sustancial en desempeño, lo que sugiere que el valor empresarial no crece automáticamente con la complejidad del modelo.</p>
+<h3 id="Reflexi%C3%B3n-conceptual">Reflexión conceptual<a class="anchor-link" href="#Reflexi%C3%B3n-conceptual">¶</a></h3><ul>
+<li>¿Qué relación observas entre complejidad del modelo, capacidad de generalización y estabilidad del desempeño?
+A lo largo del laboratorio se observó el patrón clásico del trade-off sesgo–varianza. Cuando se aumentó la complejidad del modelo (mayor grado polinomial sin regularización), el error de entrenamiento disminuyó, pero el error de validación comenzó a aumentar, evidenciando sobreajuste. Es decir, el modelo se ajustaba mejor a los datos conocidos, pero perdía capacidad de generalización.</li>
+</ul>
+<p>La incorporación de regularización permitió controlar este efecto. En el caso de Ridge, fue posible mantener grado 2 sin que el error en test se deteriorara. Esto muestra que la complejidad por sí sola no determina el desempeño; lo determinante es cómo se controla. Sin embargo, también se evidenció que aumentar la complejidad no generó mejoras sustanciales en R² ni reducciones drásticas en RMSE. Por tanto, mayor complejidad no implicó necesariamente mejor generalización, y sí implicó menor interpretabilidad.</p>
+<p>En términos de estabilidad, los modelos regularizados mostraron menor variabilidad entre folds y brechas train–test moderadas, lo que sugiere que la regularización mejora la consistencia del desempeño frente a cambios en la muestra.</p>
+<ul>
+<li>¿Qué fuentes de sesgo podrían estar presentes en los datos o en el proceso de modelado?
+En este análisis pueden identificarse múltiples fuentes de sesgo, tanto estadísticas como estructurales, que pueden afectar la validez y la generalización del modelo.</li>
+</ul>
+<p>En primer lugar, existe sesgo por variables omitidas. El bajo R² observado sugiere que el modelo no captura completamente los determinantes del riesgo cardiovascular. Es probable que falten variables relevantes como hábitos alimenticios, estrés, calidad del sueño, nivel socioeconómico, acceso a servicios médicos o adherencia a tratamientos. La ausencia de estos factores limita la capacidad explicativa y puede generar estimaciones incompletas del riesgo.</p>
+<p>En segundo lugar, puede haber sesgo de medición. Variables clínicas como presión arterial, glucosa o colesterol pueden contener error de medición, variabilidad entre dispositivos o diferencias en protocolos de toma de datos. Este ruido afecta la estabilidad de los coeficientes y reduce la precisión predictiva.</p>
+<p>También es posible la presencia de sesgo de selección y de muestreo. Si la muestra no es representativa de la población objetivo, por ejemplo, si sobrerrepresenta ciertos grupos de edad, perfiles clínicos o niveles socioeconómicos, el modelo puede generalizar mal a otros segmentos poblacionales. De igual forma, si los datos provienen principalmente de personas que acuden voluntariamente a chequeos médicos, podría existir un sesgo de auto-selección. Esto implica que el modelo aprende patrones de una subpoblación específica y no necesariamente del conjunto completo de individuos.</p>
+<p>Relacionado con lo anterior, puede existir sesgo de supervivencia. Si los datos incluyen únicamente pacientes que permanecen en seguimiento clínico, podrían excluirse casos severos o eventos fatales no registrados en el sistema, generando una visión parcial del riesgo real. Este fenómeno puede distorsionar la estimación de los factores verdaderamente críticos.</p>
+<p>Otra fuente relevante es el sesgo de agregación. La construcción de variables derivadas (BMI, ratios, categorías de presión arterial) implica simplificaciones. Al agrupar información continua en categorías, se pierde granularidad y se pueden ocultar diferencias importantes dentro de cada grupo. Además, la agregación puede inducir correlaciones fuertes entre predictores, lo que obliga a depender de regularización para estabilizar el modelo.</p>
+<p>Desde una perspectiva más amplia, pueden existir sesgos preexistentes o históricos en los datos. Si el sistema de salud refleja desigualdades estructurales en diagnóstico, tratamiento o acceso, el modelo puede reproducir esas inequidades. Incluso si no se incluyen variables sensibles explícitas, pueden existir correlaciones indirectas que generen impactos desiguales entre grupos poblacionales.</p>
+<p>Finalmente, deben considerarse riesgos metodológicos como data leakage o data mismatch. Aunque en este laboratorio se utilizaron pipelines y validación cruzada para minimizar filtraciones de información, cualquier transformación realizada antes de dividir los datos podría introducir optimismo artificial en las métricas. Asimismo, si el modelo se aplicara en una población con distribución distinta a la del entrenamiento, podría producirse un desajuste de distribución que afecte su desempeño.</p>
+<p>En conjunto, estos sesgos pueden influir tanto en la capacidad explicativa como en la equidad y estabilidad del modelo. Reconocerlos es fundamental para interpretar correctamente los resultados y evitar conclusiones excesivamente optimistas sobre su capacidad predictiva o su aplicabilidad general.</p>
+<ul>
+<li>Si el tamaño de muestra fuera mayor, ¿esperarías cambios en la estabilidad de los modelos? Explique
+Sí. Un mayor tamaño de muestra generalmente reduce la varianza del estimador. Con más datos, los coeficientes tenderían a estabilizarse, la desviación estándar en validación cruzada disminuiría y los intervalos de confianza obtenidos por bootstrapping serían más estrechos.</li>
+</ul>
+<p>Además, un conjunto más grande permitiría estimar con mayor precisión los efectos no lineales e interacciones del modelo polinomial. Es probable que la diferencia entre modelos (lineal, Ridge, Lasso) se volviera más clara, y que la regularización pudiera calibrarse con mayor confianza.</p>
+<p>Sin embargo, un mayor tamaño de muestra no elimina el sesgo estructural. Si faltan variables relevantes o existen errores sistemáticos en los datos, el R² podría seguir siendo limitado. Por tanto, más datos mejorarían la estabilidad estadística, pero no necesariamente resolverían deficiencias en la calidad o relevancia de las variables incluidas.</p>
 </div>
 </div>
 </div>
